@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -28,7 +29,8 @@ const (
 	debugProtoKey  = "__proto__"
 	debugHeaderKey = "__header__"
 
-	usageInfoKey = "__usage__"
+	usageInfoKey    = "__usage__"
+	responseDateKey = "__date__"
 
 	facebookAPIVersionHeader = "facebook-api-version"
 	facebookDebugHeader      = "x-fb-debug"
@@ -486,6 +488,21 @@ func (res Result) UsageInfo() *UsageInfo {
 	}
 
 	return nil
+}
+
+// ResponseDate returns the time in the HTTP Date header of the Graph API
+// response this result was parsed from, i.e. Facebook's clock rather than the
+// caller's. It is set on results returned by Session.Api (and Get, Post,
+// Delete, Put) and Session.Request. ok is false when the response has no Date
+// header or http.ParseTime cannot parse it.
+func (res Result) ResponseDate() (time.Time, bool) {
+	if responseDate, ok := res[responseDateKey]; ok {
+		if date, ok := responseDate.(time.Time); ok {
+			return date, true
+		}
+	}
+
+	return time.Time{}, false
 }
 
 func (res Result) decode(v reflect.Value, fullName string) error {

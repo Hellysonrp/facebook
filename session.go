@@ -151,6 +151,7 @@ func (session *Session) Request(request *http.Request) (res Result, err error) {
 	res, err = MakeResult(data)
 	session.addDebugInfo(res, response)
 	session.addUsageInfo(res, response)
+	session.addResponseDate(res, response)
 
 	if res != nil {
 		err = res.Err()
@@ -414,6 +415,7 @@ func (session *Session) graph(path string, method Method, params Params) (res Re
 	if response != nil {
 		session.addDebugInfo(res, response)
 		session.addUsageInfo(res, response)
+		session.addResponseDate(res, response)
 	}
 
 	if res != nil {
@@ -682,6 +684,24 @@ func (session *Session) addUsageInfo(res Result, response *http.Response) Result
 	}
 
 	res[usageInfoKey] = &usageInfo
+	return res
+}
+
+// addResponseDate stores the response's Date header in res so callers can
+// order results by Facebook's clock instead of their own. A missing or
+// malformed Date header leaves res unchanged.
+func (session *Session) addResponseDate(res Result, response *http.Response) Result {
+	if res == nil || response == nil {
+		return res
+	}
+
+	date, err := http.ParseTime(response.Header.Get("Date"))
+
+	if err != nil {
+		return res
+	}
+
+	res[responseDateKey] = date
 	return res
 }
 

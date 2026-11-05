@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSession(t *testing.T) {
@@ -369,6 +370,72 @@ func TestSessionWithCustomBaseUrl(t *testing.T) {
 	}
 	if numCalls != 1 {
 		t.Fatal("no call to mock server")
+	}
+}
+
+func TestSessionResponseDate(t *testing.T) {
+	expected := time.Date(2026, time.November, 4, 18, 30, 15, 0, time.UTC)
+
+	respond := func(w http.ResponseWriter) {
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id": "1"}`))
+	}
+
+	testMux := http.NewServeMux()
+	testMux.HandleFunc("/v3.0/no-date", func(w http.ResponseWriter, r *http.Request) {
+		// a nil value stops net/http from adding its own Date header.
+		w.Header()["Date"] = nil
+		respond(w)
+	})
+	testMux.HandleFunc("/v3.0/valid-date", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Date", expected.Format(http.TimeFormat))
+		respond(w)
+	})
+	testMux.HandleFunc("/v3.0/malformed-date", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Date", "not a date")
+		respond(w)
+	})
+
+	srv := httptest.NewServer(testMux)
+	defer srv.Close()
+
+	session := &Session{
+		Version: "v3.0",
+		BaseURL: srv.URL + "/",
+	}
+
+	cases := []struct {
+		path string
+		ok   bool
+		date time.Time
+	}{
+		{"/no-date", false, time.Time{}},
+		{"/valid-date", true, expected},
+		{"/malformed-date", false, time.Time{}},
+	}
+
+	for _, c := range cases {
+		res, err := session.Get(c.path, nil)
+
+		if err != nil {
+			t.Fatalf("request to %v failed. [e:%v]", c.path, err)
+		}
+
+		date, ok := res.ResponseDate()
+
+		if ok != c.ok || !date.Equal(c.date) {
+			t.Fatalf("unexpected response date for %v. [date:%v] [ok:%v]", c.path, date, ok)
+		}
+
+		// "__date__" must not get in the way of decoding the response body.
+		var v struct {
+			ID string `facebook:"id"`
+		}
+
+		if err := res.Decode(&v); err != nil || v.ID != "1" {
+			t.Fatalf("fail to decode result of %v. [e:%v] [id:%v]", c.path, err, v.ID)
+		}
 	}
 }
 
